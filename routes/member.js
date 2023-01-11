@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const router = express.Router();
 const db = require(__dirname + "/../modules/db_connect.js");
@@ -24,7 +25,7 @@ router.post("/login/api", async (req, res) => {
     password &&
     bcrypt.compareSync(password, result[0].password)
   ) {
-    const token = jwt.sign({ member_sid: result[0].member_sid }, "hiking1214");
+    const token = jwt.sign({ member_sid: result[0].member_sid },process.env.JWT_SECRET);
 
     output.member_sid = result[0].member_sid;
     output.nickname = result[0].nickname;
