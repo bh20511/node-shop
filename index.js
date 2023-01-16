@@ -51,7 +51,11 @@ app.get("/", (req, res) => {
   res.send("歡迎來到express");
 });
 
+//會員部分
 app.use("/member", require(__dirname + "/routes/member"));
+
+//商品部分
+app.use("/product", require(__dirname + "/routes/product"));
 
 app.get("/test-token", (req, res) => {
   // return res.json({ a: 1 });
