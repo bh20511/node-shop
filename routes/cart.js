@@ -6,6 +6,7 @@ const axios = require("axios");
 
 const { HmacSHA256 } = require("crypto-js");
 const Base64 = require("crypto-js/enc-base64");
+
 //取得.env內的設定部分
 require("dotenv").config();
 const {
@@ -19,7 +20,21 @@ const {
   uri,
 } = process.env;
 
+function createSignature(uri, orders_num, linePayBody) {
+  const nonce = orders_num
 
+  const encrypt = HmacSHA256(`${LINEPAY_CHANNEL_SECRET_KEY}/${LINEPAY_VERSION}${uri}${JSON.stringify(linePayBody)}${nonce}`, LINEPAY_CHANNEL_SECRET_KEY)
+
+  const signature = Base64.stringify(encrypt);
+
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-LINE-ChannelId': LINEPAY_CHANNEL_ID,
+    'X-LINE-Authorization-Nonce': nonce,
+    'X-LINE-Authorization': signature,
+  };
+  return headers;
+}
 
 // 下面是把訂單寫入資料庫
 async function createOrders(req, res) {
@@ -71,93 +86,43 @@ async function createOrders(req, res) {
 
 
 
-
-  //輸入uuid跟 指定的linebody 他會幫你轉成可以送給line的headers
-  // function createSignature(orders_num, linePayBody) {
-  //   const nonce = orders_num;
-  //   const string = `${LINEPAY_CHANNEL_SECRET_KEY}/${LINEPAY_VERSION}${uri}${JSON.stringify(
-  //     linePayBody
-  //   )}${nonce}`;
-  //   //製作簽章
-  //   const signature = Base64.stringify(
-  //     HmacSHA256(string, LINEPAY_CHANNEL_SECRET_KEY)
-  //   );
-  //   const headers = {
-  //     "Content-Type": "application/json",
-  //     "X-LINE-ChannelId": LINEPAY_CHANNEL_ID,
-  //     "X-LINE-Authorization-Nonce	": nonce,
-  //     "X-LINE-Authorization	": signature,
-  //   };
-  //   return headers;
-  // }
-
-  function createSignature(linePayBody) {
-    const nonce = orders_num
-
-    const encrypt = HmacSHA256(`${LINEPAY_CHANNEL_SECRET_KEY}/${LINEPAY_VERSION}${uri}${JSON.stringify(linePayBody)}${nonce}`, LINEPAY_CHANNEL_SECRET_KEY)
-
-    const signature = Base64.stringify(encrypt);
-    // console.log('test:', signature);
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'X-LINE-ChannelId': LINEPAY_CHANNEL_ID,
-      'X-LINE-Authorization-Nonce': nonce,
-      'X-LINE-Authorization': signature,
-    };
-    return headers;
-  }
-
-
-
-  //為什麼我這邊要寫新陣列? 看起來我是想要紀錄商品編號,商品名稱,商品數量,商品價格
-  const newOrder = orders.map((e, i) => {
-    return { name: e.name, quantity: e.amount, price: e.price };
-  });
-
-  // console.log(newOrder);
-
-
-
-  //   function createLinePayBody(order) {
-  //     return {
-  //         ...order,
-  //         currency: 'TWD',
-  //         redirectUrls: {
-  //             confirmUrl: `${LINEPAY_RETURN_HOST}${LINEPAY_RETURN_CONFIRM_URL}`,
-  //             cancelUrl: `${LINEPAY_RETURN_HOST}${LINEPAY_RETURN_CANCEL_URL}`,
-  //           },
-  //     }
-  // }
-
-
-  const linePayBody = {
-    amount: totalPrice,
-    currency: "TWD",
-    orderId: orders_num,
-    redirectUrls: {
-      confirmUrl: `${LINEPAY_RETURN_HOST}/${LINEPAY_RETURN_CONFIRM_URL}`,
-      cancelUrl: `${LINEPAY_RETURN_HOST}/${LINEPAY_RETURN_CANCEL_URL}`,
-    },
-    packages: [
-      {
-        id: "1",
-        amount: totalPrice,
-        products: newOrder,
-      },
-    ],
-  };
-
-  const headers = createSignature(linePayBody);
-  const url = `${LINEPAY_SITE}/${LINEPAY_VERSION}${uri}`;
-  const {data} = await axios.post(url, linePayBody, { headers });
-  console.log(data);
-  if(data.returnCode==='0000'){
+  if (payWay === '現金') {
     output.success = true;
-    output.url = data.info.paymentUrl.web
     output.orders_num = orders_num
-  }else{
-    output.error = '訂單失敗'
+  } else {
+    //為什麼我這邊要寫新陣列? 看起來我是想要紀錄商品編號,商品名稱,商品數量,商品價格
+    const newOrder = orders.map((e, i) => {
+      return { name: e.name, quantity: e.amount, price: e.price };
+    });
+
+    const linePayBody = {
+      amount: totalPrice,
+      currency: "TWD",
+      orderId: orders_num,
+      redirectUrls: {
+        confirmUrl: `${LINEPAY_RETURN_HOST}/${LINEPAY_RETURN_CONFIRM_URL}`,
+        cancelUrl: `${LINEPAY_RETURN_HOST}/${LINEPAY_RETURN_CANCEL_URL}`,
+      },
+      packages: [
+        {
+          id: "1",
+          amount: totalPrice,
+          products: newOrder,
+        },
+      ],
+    };
+
+    const headers = createSignature(uri, orders_num, linePayBody);
+    const url = `${LINEPAY_SITE}/${LINEPAY_VERSION}${uri}`;
+    const { data } = await axios.post(url, linePayBody, { headers });
+    console.log(data);
+    if (data.returnCode === '0000') {
+      output.success = true;
+      output.url = data.info.paymentUrl.web
+      output.orders_num = orders_num
+    } else {
+      output.error = 'LinePay訂單失敗'
+    }
   }
   // if (result2.affectedRows) {
   //   output.success = true;
@@ -169,31 +134,55 @@ router.post("/createOrders", async (req, res) => {
   res.json(await createOrders(req, res));
 });
 
-// router.post("/createOrder", async (req, res) => {
-//   orders = req.body.order;
-//   newOrder = req.body;
-//   try {
-//     //要送出去的東西
-//     const linePayBody = {
-//       ...orders,
-//       //成功的頁面跟取消的頁面
-//       redirectUrls: {
-//         confirmUrl: `${LINEPAY_RETURN_HOST}/${LINEPAY_RETURN_CONFIRM_URL}`,
-//         cancelUrl: `${LINEPAY_RETURN_HOST}/${LINEPAY_RETURN_CANCEL_URL}`,
-//       },
-//     };
 
-//     const uri = "/payments/request";
-//     const headers = createSignature(uri, linePayBody);
 
-//     const url = `${LINEPAY_SITE}/${LINEPAY_VERSION}${uri}`;
-//     const linePayRes = await axios.post(url, linePayBody, { headers });
-//     // console.log(linePayRes);
-//     res.json(linePayRes?.data);
-//   } catch (error) {
-//     console.log(error);
-//     res.json(error);
-//   }
-// });
+
+
+
+
+
+
+async function linePayConfirm(req, res) {
+  const output = {
+    success: false,
+    error: "",
+  };
+
+  //接下來處理linepay二次請求
+  //先找出此訂單的價格塞進amount
+  const { transactionId, orderId } = req.query;
+  const sql = `SELECT * FROM orders WHERE orders_num = "${orderId}"`;
+  const [result] = await db.query(sql);
+  try {
+    // 建立 LINE Pay 請求規定的資料格式
+    const uri = `/payments/${transactionId}/confirm`
+    const linePayBody = {
+      amount: result[0].total_price,
+      currency: 'TWD'
+    };
+
+    // CreateSignature 建立加密內容
+    const headers = createSignature(uri, orderId, linePayBody);
+
+    // API 位址
+    const url = `${LINEPAY_SITE}/${LINEPAY_VERSION}${uri}`;
+    const { data } = await axios.post(url, linePayBody, { headers });
+    console.log(data);
+    if (data.returnCode === '0000') {
+      const sql = `UPDATE orders SET pay_state = '已付款' WHERE orders_num = "${orderId}"`;
+      const result = await db.query(sql);
+      output.success = true;
+    } else {
+      output.error = 'LinePay訂單失敗'
+    }
+  } catch (err) {
+    console.log(err);
+  }
+  return output
+}
+router.get("/linePayConfirm", async (req, res) => {
+  res.json(await linePayConfirm(req, res));
+  // res.json({banana:'banana'})
+});
 
 module.exports = router;
