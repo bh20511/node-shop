@@ -64,7 +64,7 @@ app.get("/test-token", (req, res) => {
   // return res.json({ a: 1 });
   const output = {
     success: false,
-    member_sid: "沒登入看屁喔",
+    member_sid: "沒登入不能看唷",
   };
   const { auth } = res.locals;
   if (auth && auth.member_sid) {
