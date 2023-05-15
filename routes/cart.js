@@ -52,9 +52,9 @@ async function createOrders(req, res) {
 
   //把每一個品項先查好金額並寫好物件
   for (let i = 0; i < orders.length; i++) {
-    const pSql = `SELECT price,name FROM products WHERE sid = ${orders[i].sid}`;
+    const pSql = `SELECT price,name,member_price FROM products WHERE sid = ${orders[i].sid}`;
     const [result] = await db.query(pSql);
-    orders[i].price = +result[0].price;
+    orders[i].price = +result[0].member_price;
     orders[i].name = result[0].name;
     //把商品細項的部分透過資料庫查好
     //經過上面之後 購物車orders陣列中的每個物件 都會有 {sid,amount,price,name} 這些屬性 
